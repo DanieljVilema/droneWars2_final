@@ -1,0 +1,32 @@
+# ====== Parámetros generales ======
+NUM_CAMIONES=4
+NUM_OBJETIVOS=4
+
+# Cargas variables por camión:
+# Formato por camión: XA[+1C opcional], separados por ';'
+# 4A1C = 4 ataque + 1 cámara ; 3A = 3 ataque ; 2A = 2 ataque ; etc.
+CAMION_CARGAS=4A1C;3A;2A;4A
+
+# ====== Probabilidades y tiempos ======
+PROBABILIDAD_DERRIBO=20
+PROBABILIDAD_PERDIDA_COM=3
+TIEMPO_REESTABLECIMIENTO=2
+
+# ====== Movimiento / combustible / AA ======
+COMBUSTIBLE_INICIAL=120
+RADIO_DETECCION_ARTILLERIA=40
+
+# ====== Puertos ======
+PUERTO_COMANDO=8080
+PUERTO_BASE_ARTILLERIA=9000
+
+# ====== Coordenadas ======
+CAMIONES_POS=10,10;40,30;70,50;100,70
+# OJO: las zonas de ensamble se indexan por OBJETIVO (no por camión)
+ZONAS_ENSAMBLE=50,100;70,100;90,100;110,100
+COORDENADAS_OBJETIVOS=100,200;150,230;200,260;250,290
+
+# ====== Salida / Logs ======
+# 0 = salida concisa (recomendado para la entrega)
+# 1 = salida detallada (debug)
+VERBOSE=1
