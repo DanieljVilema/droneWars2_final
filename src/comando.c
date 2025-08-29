@@ -404,6 +404,9 @@ static void simulate_defense_attacks(void) {
     }
 }
 
+// DECLARACIÓN ANTICIPADA de reensamblar para evitar error de compilación
+static void reensamblar(void);
+
 // Nueva función para iniciar la misión de todos los enjambres
 static void start_mission_for_all_swarms(void) {
     printf("[SISTEMA] 🚀 INICIANDO FASE DE COMBATE\n");
