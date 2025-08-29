@@ -159,6 +159,18 @@ static void* th_rx(void*arg){
                 char e[64]; snprintf(e,sizeof(e),"EVT:%d:SALIENDO_ENSAMBLE",DR.id);
                 send_critical(e);
             }
+        } else if(!strncmp(buf,"INICIAR_MISION",14)){
+            int salio = 0;
+            pthread_mutex_lock(&DR.m);
+            if(DR.estado==DRN_EN_ORBITA){ 
+                DR.estado=DRN_EN_RUTA; 
+                salio=1; 
+            }
+            pthread_mutex_unlock(&DR.m);
+            if(salio){
+                char e[64]; snprintf(e,sizeof(e),"EVT:%d:SALIENDO_ENSAMBLE",DR.id);
+                send_critical(e);
+            }
         } else if(!strncmp(buf,"REASIGNAR:",10)){
             int new_enj=atoi(buf+10);
             pthread_mutex_lock(&DR.m);

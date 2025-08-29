@@ -318,6 +318,36 @@ static void donate_excess_drones(int ej){
     }
 }
 
+// Nueva función para verificar si todos los enjambres están listos para la misión
+static int all_swarms_ready_for_mission(void) {
+    for(int i = 0; i < CFG.num_objetivos; i++) {
+        // Un enjambre está listo si tiene al menos 3 drones de ataque y 1 de cámara
+        // o si ya está en misión
+        if(!ENJ[i].en_mision && !ENJ[i].completos && 
+           (ENJ[i].ens_attack < 3 || ENJ[i].ens_camera < 1)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+// Nueva función para iniciar la misión de todos los enjambres
+static void start_mission_for_all_swarms(void) {
+    for(int i = 0; i < CFG.num_objetivos; i++) {
+        if(!ENJ[i].en_mision && ENJ[i].activos > 0) {
+            ENJ[i].en_mision = 1;
+            // Ordenar a todos los drones del enjambre que salgan hacia el objetivo
+            for(int j = 0; j < MAX_DRONES; j++) {
+                if(DR[j].id == j && DR[j].enjambre_id == i && 
+                   DR[j].conectado && !DR[j].finalizado) {
+                    send_to_drone(DR[j].sock, "INICIAR_MISION");
+                }
+            }
+            printf("[CMD] Enjambre obj %d iniciando misión\n", i);
+        }
+    }
+}
+
 static void maybe_mark_enjambre_completo(int ej){
     if(ej<0||ej>=CFG.num_objetivos) return;
     
@@ -337,6 +367,11 @@ static void maybe_mark_enjambre_completo(int ej){
         
         // Donar excedentes después de completar (reactivado)
         donate_excess_drones(ej);
+        
+        // Verificar si todos los enjambres están listos para la misión
+        if(all_swarms_ready_for_mission()) {
+            start_mission_for_all_swarms();
+        }
     }
 }
 
@@ -454,16 +489,21 @@ static void reensamblar(void){
     
     // Primero, intentar reasignar a enjambres incompletos
     for(int i=0;i<CFG.num_objetivos;i++){
-        if(!ENJ[i].completos){
+        if(!ENJ[i].completos && !ENJ[i].en_mision){
             (void)try_reassign_one(i);
         }
     }
     
     // Segundo, donar excedentes de enjambres completos
     for(int i=0;i<CFG.num_objetivos;i++){
-        if(ENJ[i].completos){
+        if(ENJ[i].completos && !ENJ[i].en_mision){
             donate_excess_drones(i);
         }
+    }
+    
+    // Verificar si después del reensamblaje todos están listos para la misión
+    if(all_swarms_ready_for_mission()) {
+        start_mission_for_all_swarms();
     }
 }
 
@@ -486,34 +526,18 @@ static int check_termination(void){
     // Si aún no hay drones registrados, no termines
     if (registrados == 0) return 0;
 
-    // NUEVA LÓGICA: Verificar si todos los enjambres completos han alcanzado su máximo potencial
-    int puede_mejorar = 0;
-    int tiempo_transcurrido = (int)(now - SIM_START);
-    
+    // NUEVA LÓGICA: Verificar si todos los enjambres han completado su misión
+    int todos_enjambres_completaron = 1;
     for(int i = 0; i < CFG.num_objetivos; i++){
-        if(ENJ[i].completos){
-            // Si es completo pero aún no ha llegado a 4 detonaciones
-            if(ENJ[i].detonaciones < 4){
-                // Verificar si aún hay drones activos de ataque que puedan detonar
-                int ataques_activos = 0;
-                for(int j = 0; j < MAX_DRONES; j++){
-                    if(DR[j].id == j && DR[j].enjambre_id == i && 
-                       DR[j].conectado && !DR[j].finalizado && 
-                       DR[j].tipo == 0 && !DR[j].detono){
-                        ataques_activos++;
-                    }
-                }
-                // Si aún hay drones de ataque activos Y no ha pasado mucho tiempo, puede mejorar
-                if(ataques_activos > 0 && tiempo_transcurrido < 20){
-                    puede_mejorar = 1;
-                    break;
-                }
-            }
+        if(ENJ[i].en_mision && ENJ[i].activos > 0) {
+            // Si un enjambre está en misión y aún tiene drones activos, no ha completado
+            todos_enjambres_completaron = 0;
+            break;
         }
     }
     
-    // Solo terminar por "todos atacados" si no puede mejorar más
-    if(CFG.num_objetivos>0 && atacados>=CFG.num_objetivos && !puede_mejorar) return 1;
+    // Si todos los enjambres completaron su misión, terminar
+    if(todos_enjambres_completaron && atacados > 0) return 1;
     
     // Otras condiciones de terminación
     if((int)(now - SIM_START) >= SIM_TIMEOUT) return 1;
@@ -687,6 +711,11 @@ int main(void){
         }
         if(necesita_reensamblado) {
             reensamblar();
+        }
+        
+        // Verificar si todos los enjambres están listos para la misión
+        if(all_swarms_ready_for_mission() && !ENJ[0].en_mision) {
+            start_mission_for_all_swarms();
         }
         
         if(check_termination()) break;
