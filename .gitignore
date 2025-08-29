@@ -1,0 +1,14 @@
+# Build / bin
+bin/
+build/
+*.o
+*.a
+*.so
+*.out
+*.log
+*.dSYM/
+# Ejecutables en raíz (por si existen)
+command
+comando
+drone
+artillery
