@@ -406,6 +406,7 @@ static void simulate_defense_attacks(void) {
 
 // DECLARACIÓN ANTICIPADA de reensamblar para evitar error de compilación
 static void reensamblar(void);
+static void reensamblar_solo_ensamblaje(void);  // Nueva función que solo reensambla
 
 // Nueva función para iniciar la misión de todos los enjambres
 static void start_mission_for_all_swarms(void) {
@@ -430,9 +431,9 @@ static void start_mission_for_all_swarms(void) {
     printf("[SISTEMA] 🎯 FASE 1: Ataques de defensa durante el viaje\n");
     simulate_defense_attacks();
     
-    // FASE 2: Reensamblaje con sobrevivientes
+    // FASE 2: Reensamblaje con sobrevivientes (SIN llamar a start_mission)
     printf("[SISTEMA] 🔄 FASE 2: Reensamblaje con sobrevivientes\n");
-    reensamblar();
+    reensamblar_solo_ensamblaje();  // Nueva función que solo reensambla
     
     // FASE 3: Todos caen en picada hacia objetivos
     printf("[SISTEMA] 💥 FASE 3: Todos los enjambres caen en picada\n");
@@ -603,7 +604,7 @@ static void reensamblar(void){
         static int last_loss_count = 0;
         if(total_activos < last_loss_count - 5 || total_activos == total_inicial - 1) {
             printf("[SISTEMA] Pérdidas: %d/%d drones - reensamblaje activo\n", 
-                   total_activos, total_inicial);
+           total_activos, total_inicial);
             last_loss_count = total_activos;
         }
     }
@@ -625,6 +626,58 @@ static void reensamblar(void){
     // Verificar si después del reensamblaje todos están listos para la misión
     if(all_swarms_ready_for_mission()) {
         start_mission_for_all_swarms();
+    }
+}
+
+// NUEVA FUNCIÓN: Solo reensamblaje sin llamar a start_mission (para evitar bucles)
+static void reensamblar_solo_ensamblaje(void) {
+    // Solo reensamblar si hay evidencia de pérdidas en combate
+    int hay_perdidas = 0;
+    int total_activos = 0;
+    int total_inicial = 0;
+    
+    for(int i=0; i<CFG.num_objetivos; i++){
+        total_activos += ENJ[i].activos;
+    }
+    
+    // Calcular total inicial esperado (20A + 8C = 28 drones)
+    total_inicial = CFG.num_camiones * 7; // Asumiendo 5A+2C por camión
+    
+    // Si perdimos drones, entonces hay necesidad de reensamblaje
+    if(total_activos < total_inicial) {
+        hay_perdidas = 1;
+    }
+    
+    // En condiciones perfectas (sin pérdidas), no hacer reensamblaje agresivo
+    if(!hay_perdidas) {
+        if(CFG.verbose) {
+            printf("[SISTEMA] Condiciones perfectas - reensamblaje limitado\n");
+        }
+        return;
+    }
+    
+    if(CFG.verbose) {
+        printf("[SISTEMA] Reensamblando con %d/%d drones sobrevivientes\n", 
+               total_activos, total_inicial);
+    }
+    
+    // Primero, intentar reasignar a enjambres incompletos
+    for(int i=0;i<CFG.num_objetivos;i++){
+        if(!ENJ[i].completos && !ENJ[i].en_mision){
+            (void)try_reassign_one(i);
+        }
+    }
+    
+    // Segundo, donar excedentes de enjambres completos
+    for(int i=0;i<CFG.num_objetivos;i++){
+        if(ENJ[i].completos && !ENJ[i].en_mision){
+            donate_excess_drones(i);
+        }
+    }
+    
+    // NO llamar a start_mission_for_all_swarms() aquí para evitar bucles
+    if(CFG.verbose) {
+        printf("[SISTEMA] Reensamblaje completado - continuando con caída en picada\n");
     }
 }
 
@@ -653,9 +706,9 @@ static int check_termination(void){
         if(ENJ[i].en_mision && ENJ[i].activos > 0) {
             // Si un enjambre está en misión y aún tiene drones activos, no ha completado
             todos_enjambres_completaron = 0;
-            break;
-        }
-    }
+                    break;
+                }
+            }
     
     // Si todos los enjambres completaron su misión, terminar
     if(todos_enjambres_completaron && atacados > 0) {
@@ -686,12 +739,12 @@ static void print_stats(void){
     
     // Debug conciso de cada objetivo
     if(CFG.verbose){
-        for(int i=0;i<CFG.num_objetivos;i++){
+    for(int i=0;i<CFG.num_objetivos;i++){
             printf("[DEBUG] Obj %d: %s, %d det, %s\n", 
-                   i, 
+               i, 
                    ENJ[i].completos ? "COMPLETO" : "INCOMPLETO", 
-                   ENJ[i].detonaciones,
-                   BL[i].estado==0 ? "INTACTO" : (BL[i].estado==1 ? "PARCIAL" : "TOTAL"));
+               ENJ[i].detonaciones,
+               BL[i].estado==0 ? "INTACTO" : (BL[i].estado==1 ? "PARCIAL" : "TOTAL"));
         }
     }
 
@@ -800,7 +853,7 @@ static void handle_artillery(const char*msg){
     // Re-evaluar estado completo después del derribo
     maybe_mark_enjambre_completo(ej);
 
-    
+
     // Intentar re-ensamblar si ese enjambre quedó incompleto
     if(!ENJ[ej].completos) reensamblar();
 }
