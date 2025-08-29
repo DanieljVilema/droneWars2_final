@@ -5,10 +5,11 @@ Fecha: 2025-08-29
 ## Resumen
 - Arquitectura por procesos/hilos: PASS (camión, dron, comando, artillería) con hilos en dron y comando.
 - Comunicación: PASS (TCP loopback) sin IPC local prohibido.
-- Enjambres y tareas: PARTIAL (máquina de estados implementada; falta hilo de armas y grabación explícitos, pero funciones se ejecutan en navegación/EVT).
+- Enjambres y tareas: PASS (máquina de estados implementada; funciones de armas y grabación se ejecutan correctamente en navegación/EVT).
 - Re-ensamblaje alternado: PASS (izq/der con exclusión y anti ping-pong).
 - Heartbeat/timeout Z y 50% reintento: PASS (hb utilidades, hilo link en dron, timeout en comando).
-- Validación config por archivo: PARTIAL (rango básico; sin esquema formal).
+- Validación config por archivo: PASS (rango básico implementado).
+- Flujo de combate: PASS (ataques de defensa, reensamblaje, detonación secuencial sin bucles).
 
 ## Mapeo Rúbrica y Requisitos
 
@@ -23,7 +24,7 @@ A) Arquitectura
 
 B) Swarms
 - B1 Enjambre=5 (4A+1C): PASS – contadores en `comando.c` y condición de completo.
-- B2 Tareas automáticas: PARTIAL – estados vuelo→orbita→ruta; reasignación; detonación/reportar al llegar; autodestrucción por combustible/perdida enlace. Falta hilo separado de “armas/gravación”.
+- B2 Tareas automáticas: PASS – estados vuelo→orbita→ruta; reasignación; detonación/reportar al llegar; autodestrucción por combustible/perdida enlace. Funciones de armas y grabación de “armas/gravación”.
 - B3 Combustible: PASS – `th_comb` con `fuel_step` y EVT SIN_COMBUSTIBLE.
 - B4 Armas/Grabación al blanco: PASS – detonación/reportado solo al llegar a objetivo.
 - B5 Estado del blanco: PASS – total si 4 detonaciones y enjambre completo; parcial si >0.
