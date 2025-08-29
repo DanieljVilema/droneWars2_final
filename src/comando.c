@@ -323,18 +323,9 @@ static int all_swarms_ready_for_mission(void) {
     // LÓGICA CORREGIDA: Solo iniciar misión cuando NO hay posibilidad
     // de formar más enjambres completos
     
-    if(CFG.verbose) {
-        printf("[VERIFICACION] 🔍 Evaluando si todos los enjambres están listos para misión...\n");
-    }
-    
     // Verificar si hay enjambres incompletos que podrían completarse
     for(int i = 0; i < CFG.num_objetivos; i++) {
         if(!ENJ[i].en_mision && !ENJ[i].completos) {
-            if(CFG.verbose) {
-                printf("[VERIFICACION] 📋 Enjambre %d incompleto (%dA+%dC) - verificando si puede completarse\n", 
-                       i, ENJ[i].ens_attack, ENJ[i].ens_camera);
-            }
-            
             // Si este enjambre está incompleto, verificar si podría completarse
             // con drones de otros enjambres que tienen exceso
             int puede_completarse = 0;
@@ -345,10 +336,6 @@ static int all_swarms_ready_for_mission(void) {
                 
                 // Si el enjambre j tiene exceso y puede donar al enjambre i
                 if(ENJ[j].ens_attack > 4 || ENJ[j].ens_camera > 1) {
-                    if(CFG.verbose) {
-                        printf("[VERIFICACION] 💡 Enjambre %d puede donar exceso (%dA+%dC) → Enjambre %d puede completarse\n", 
-                               j, ENJ[j].ens_attack, ENJ[j].ens_camera, i);
-                    }
                     puede_completarse = 1;
                     break;
                 }
@@ -356,20 +343,12 @@ static int all_swarms_ready_for_mission(void) {
             
             // Si este enjambre podría completarse, NO estamos listos para misión
             if(puede_completarse) {
-                if(CFG.verbose) {
-                    printf("[VERIFICACION] ❌ NO listo: Enjambre %d puede completarse\n", i);
-                }
                 return 0;
-            } else if(CFG.verbose) {
-                printf("[VERIFICACION] ✅ Enjambre %d NO puede completarse - sin donantes disponibles\n", i);
             }
         }
     }
     
     // Solo estamos listos si NO hay posibilidad de formar más enjambres completos
-    if(CFG.verbose) {
-        printf("[VERIFICACION] 🎯 RESULTADO: Todos los enjambres están listos para misión\n");
-    }
     return 1;
 }
 
@@ -793,6 +772,16 @@ int main(void){
         
         // Verificar si todos los enjambres están listos para la misión
         if(all_swarms_ready_for_mission() && !ENJ[0].en_mision) {
+            // SOLO IMPRIMIR UNA VEZ cuando realmente se inicie la misión
+            printf("[SISTEMA] 🎯 ESTADO FINAL DE ENJAMBRES:\n");
+            for(int i = 0; i < CFG.num_objetivos; i++) {
+                printf("[SISTEMA] Enjambre %d: %dA+%dC (%s)\n", 
+                       i, ENJ[i].ens_attack, ENJ[i].ens_camera,
+                       ENJ[i].completos ? "COMPLETO" : "INCOMPLETO");
+            }
+            printf("[SISTEMA] 🎯 NO hay posibilidad de formar más enjambres completos\n");
+            printf("[SISTEMA] 🚀 INICIANDO MISIÓN - Todos los enjambres salen simultáneamente\n");
+            
             start_mission_for_all_swarms();
         }
         
