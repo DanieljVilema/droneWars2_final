@@ -630,7 +630,18 @@ static void handle_evt(const char*msg){
     } else if(!strcmp(ev,"OBJETIVO_REPORTADO")){
         if(DR[id].tipo==1 && !DR[id].reporto){
             DR[id].reporto=1; ENJ[ej].camara_reporto=1; DR[id].finalizado=1; ENJ[ej].activos--;
-            printf("[CMD] Reporte cámara obj %d\n", ej);
+            
+            // NUEVO: Reporte del estado del blanco después de las explosiones
+            char estado_msg[128];
+            if(BL[ej].estado == 0) {
+                snprintf(estado_msg, sizeof(estado_msg), "INTACTO");
+            } else if(BL[ej].estado == 1) {
+                snprintf(estado_msg, sizeof(estado_msg), "PARCIALMENTE DAÑADO (%d detonaciones)", BL[ej].impactos);
+            } else {
+                snprintf(estado_msg, sizeof(estado_msg), "TOTALMENTE DESTRUIDO (%d detonaciones)", BL[ej].impactos);
+            }
+            
+            printf("[CMD] Reporte cámara obj %d - Estado del blanco: %s\n", ej, estado_msg);
         }
     } else if(!strcmp(ev,"SIN_COMBUSTIBLE")){
         if(!DR[id].finalizado){ DR[id].finalizado=1; ENJ[ej].activos--; }
@@ -661,6 +672,7 @@ static void handle_artillery(const char*msg){
     // Re-evaluar estado completo después del derribo
     maybe_mark_enjambre_completo(ej);
 
+    
     // Intentar re-ensamblar si ese enjambre quedó incompleto
     if(!ENJ[ej].completos) reensamblar();
 }

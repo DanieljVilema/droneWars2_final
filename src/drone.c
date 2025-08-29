@@ -241,7 +241,16 @@ static void* th_nav(void*arg){
         report_pos(); notify_art();
         if(cerca){
             if(DR.tipo==0){ char e[48]; snprintf(e,sizeof(e),"EVT:%d:DETONACION",DR.id); send_critical(e); printf("[DRN %d] Detonó\n",DR.id); }
-            else          { char e[64]; snprintf(e,sizeof(e),"EVT:%d:OBJETIVO_REPORTADO",DR.id); send_critical(e); printf("[DRN %d] Reportó\n",DR.id); }
+            else{ 
+                char e[64]; snprintf(e,sizeof(e),"EVT:%d:OBJETIVO_REPORTADO",DR.id); 
+                send_critical(e); 
+                printf("[DRN %d] Armas activadas - Reportó\n",DR.id); 
+                
+                // NUEVO: Secuencia específica de autodestrucción para drone cámara
+                printf("[DRN %d] Iniciando secuencia de autodestrucción...\n", DR.id);
+                usleep(100000); // 100ms de delay para simular secuencia
+                printf("[DRN %d] Autodestrucción completada\n", DR.id);
+            }
             usleep(80000); pthread_mutex_lock(&DR.m); DR.estado=DRN_FINALIZADO; pthread_mutex_unlock(&DR.m); break;
         }
         usleep(80000);
