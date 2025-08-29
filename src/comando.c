@@ -250,8 +250,8 @@ static void donate_excess_drones(int ej){
             DR[donor_drone].last_moved_ts = now;
             
             if(CFG.verbose){
-                printf("[DONACION%s] obj %d → obj %d: dron %d (tipo=ATAQUE) [balanceando]\n",
-                       condiciones_perfectas ? " PERFECTA" : "", ej, best_dest, DR[donor_drone].id);
+                printf("[DONACION] obj %d → obj %d: dron %d (ATAQUE)\n",
+                       ej, best_dest, DR[donor_drone].id);
             }
             
             pthread_mutex_unlock(&ENJ[best_dest].lock);
@@ -307,8 +307,8 @@ static void donate_excess_drones(int ej){
             DR[donor_drone].last_moved_ts = now;
             
             if(CFG.verbose){
-                printf("[DONACION%s] obj %d → obj %d: dron %d (tipo=CAMARA) [balanceando]\n",
-                       condiciones_perfectas ? " PERFECTA" : "", ej, best_dest, DR[donor_drone].id);
+                printf("[DONACION] obj %d → obj %d: dron %d (CAMARA)\n",
+                       ej, best_dest, DR[donor_drone].id);
             }
             
             pthread_mutex_unlock(&ENJ[best_dest].lock);
@@ -480,12 +480,20 @@ static void reensamblar(void){
     
     // En condiciones perfectas (sin pérdidas), no hacer reensamblaje agresivo
     if(!hay_perdidas) {
-        printf("[SISTEMA] Condiciones perfectas detectadas - reensamblaje limitado\n");
+        // Solo mostrar en modo verbose
+        if(CFG.verbose) {
+            printf("[SISTEMA] Condiciones perfectas - reensamblaje limitado\n");
+        }
         return;
     }
     
-    printf("[SISTEMA] Pérdidas detectadas (%d/%d drones) - iniciando reensamblaje\n", 
-           total_activos, total_inicial);
+    // Solo mostrar pérdidas significativas (cada 5 drones perdidos o primera pérdida)
+    static int last_loss_count = 0;
+    if(total_activos < last_loss_count - 5 || total_activos == total_inicial - 1) {
+        printf("[SISTEMA] Pérdidas: %d/%d drones - reensamblaje activo\n", 
+               total_activos, total_inicial);
+        last_loss_count = total_activos;
+    }
     
     // Primero, intentar reasignar a enjambres incompletos
     for(int i=0;i<CFG.num_objetivos;i++){
@@ -558,13 +566,15 @@ static void print_stats(void){
     printf("\n==== RESUMEN ====\n");
     printf("Blancos: Total=%d  Parcial=%d  Intactos=%d  (de %d)\n", b_tot,b_par,b_int,CFG.num_objetivos);
     
-    // NUEVO: Debug detallado de cada objetivo
-    for(int i=0;i<CFG.num_objetivos;i++){
-        printf("[DEBUG] Obj %d: completo=%s, detonaciones=%d, estado=%s\n", 
-               i, 
-               ENJ[i].completos ? "SI" : "NO", 
-               ENJ[i].detonaciones,
-               BL[i].estado==0 ? "INTACTO" : (BL[i].estado==1 ? "PARCIAL" : "TOTAL"));
+    // Debug conciso de cada objetivo
+    if(CFG.verbose){
+        for(int i=0;i<CFG.num_objetivos;i++){
+            printf("[DEBUG] Obj %d: %s, %d det, %s\n", 
+                   i, 
+                   ENJ[i].completos ? "COMPLETO" : "INCOMPLETO", 
+                   ENJ[i].detonaciones,
+                   BL[i].estado==0 ? "INTACTO" : (BL[i].estado==1 ? "PARCIAL" : "TOTAL"));
+        }
     }
 
     int exito=0;

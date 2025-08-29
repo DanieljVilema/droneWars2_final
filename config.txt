@@ -1,5 +1,7 @@
-# Configuracion del simulador DroneWars2
-# Parametros basicos del sistema
+# Configuración del simulador DroneWars2
+# =====================================
+
+# Parámetros básicos del sistema
 NUM_CAMIONES=4
 NUM_OBJETIVOS=4
 
@@ -8,7 +10,7 @@ COORDENADAS_OBJETIVOS=80,20;120,40;160,60;200,80
 ZONAS_ENSAMBLE=50,20;90,40;130,60;170,80
 CAMIONES_POS=0,0;10,10;20,20;30,30
 
-# Configuracion de drones por camion (formato: XAyC donde X=ataque, y=camara)
+# Configuración de drones por camión (formato: XAyC donde X=ataque, y=cámara)
 CAMION_CARGAS=5A2C;5A2C;5A2C;5A2C
 
 # Probabilidades del sistema
@@ -16,11 +18,13 @@ PROBABILIDAD_DERRIBO=15
 PROBABILIDAD_PERDIDA_COM=5
 TIEMPO_REESTABLECIMIENTO=2
 
-# Parametros de movimiento
+# Parámetros de movimiento
 COMBUSTIBLE_INICIAL=2000
 RADIO_DETECCION_ARTILLERIA=30
 
-# Configuracion de red
+# Configuración de red
 PUERTO_COMANDO=8080
 PUERTO_BASE_ARTILLERIA=9000
-VERBOSE=1
+
+# MODO DE SALIDA (0=silencioso, 1=verbose)
+VERBOSE=0
