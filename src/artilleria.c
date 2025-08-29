@@ -1,8 +1,12 @@
-/**
- * artilleria.c
- * - Proceso por objetivo; si un dron entra al radio, con W% lo derriba y notifica al COMANDO.
- * - Deduplicación: no reporta ni imprime dos veces el mismo derribo.
- * - Salida concisa: sólo derribos (una línea por dron).
+/*
+ * Sistema de Artilleria Anti-Aerea - artilleria.c
+ * Curso: Sistemas Operativos
+ * 
+ * Cada objetivo tiene su propio sistema de defensa:
+ * - Detecta drones que entran al radio de defensa
+ * - Intenta derribarlos segun probabilidad configurada
+ * - Notifica derribos al centro de comando
+ * - Evita reportar el mismo derribo varias veces
  */
 #include <stdio.h>
 #include <stdlib.h>

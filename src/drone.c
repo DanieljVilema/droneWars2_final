@@ -1,10 +1,15 @@
-/**
- * drone.c
- * - 4 hilos: RX (comando), navegación, combustible, enlace.
- * - Enjambre = índice de objetivo (se pasa como argumento).
- * - En ABORTAR: finaliza inmediatamente (no detona/reporta).
- * - Telemetría mínima; VERBOSE=1 muestra eventos de enlace/abortar.
- * - Salida concisa: sólo "Detonó", "Reportó", "Sin combustible".
+/*
+ * Programa del DRONE - drone.c
+ * Curso: Sistemas Operativos
+ * 
+ * Implementa el comportamiento de cada drone individual
+ * Utiliza varios hilos para simular componentes independientes:
+ * - Hilo de recepcion de comandos (RX)
+ * - Hilo de navegacion 
+ * - Hilo de control de combustible
+ * - Hilo de comunicaciones/enlace
+ * - Hilo de control de armas
+ * - Hilo de sistema de video/camara
  */
 #define _GNU_SOURCE
 #include <stdio.h>

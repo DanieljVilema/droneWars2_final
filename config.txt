@@ -1,32 +1,26 @@
-# ====== Parámetros generales ======
+# Configuracion del simulador DroneWars2
+# Parametros basicos del sistema
 NUM_CAMIONES=4
 NUM_OBJETIVOS=4
 
-# Cargas variables por camión:
-# Formato por camión: XA[+1C opcional], separados por ';'
-# 4A1C = 4 ataque + 1 cámara ; 3A = 3 ataque ; 2A = 2 ataque ; etc.
-CAMION_CARGAS=4A1C;3A;2A;4A
+# Posiciones de los elementos en el mapa
+COORDENADAS_OBJETIVOS=80,20;120,40;160,60;200,80
+ZONAS_ENSAMBLE=50,20;90,40;130,60;170,80
+CAMIONES_POS=0,0;10,10;20,20;30,30
 
-# ====== Probabilidades y tiempos ======
-PROBABILIDAD_DERRIBO=20
-PROBABILIDAD_PERDIDA_COM=3
+# Configuracion de drones por camion (formato: XAyC donde X=ataque, y=camara)
+CAMION_CARGAS=5A2C;5A2C;5A2C;5A2C
+
+# Probabilidades del sistema
+PROBABILIDAD_DERRIBO=0
+PROBABILIDAD_PERDIDA_COM=0
 TIEMPO_REESTABLECIMIENTO=2
 
-# ====== Movimiento / combustible / AA ======
-COMBUSTIBLE_INICIAL=120
-RADIO_DETECCION_ARTILLERIA=40
+# Parametros de movimiento
+COMBUSTIBLE_INICIAL=2000
+RADIO_DETECCION_ARTILLERIA=20
 
-# ====== Puertos ======
+# Configuracion de red
 PUERTO_COMANDO=8080
 PUERTO_BASE_ARTILLERIA=9000
-
-# ====== Coordenadas ======
-CAMIONES_POS=10,10;40,30;70,50;100,70
-# OJO: las zonas de ensamble se indexan por OBJETIVO (no por camión)
-ZONAS_ENSAMBLE=50,100;70,100;90,100;110,100
-COORDENADAS_OBJETIVOS=100,200;150,230;200,260;250,290
-
-# ====== Salida / Logs ======
-# 0 = salida concisa (recomendado para la entrega)
-# 1 = salida detallada (debug)
 VERBOSE=1

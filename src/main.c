@@ -1,7 +1,11 @@
-/**
- * DroneWars2 - main.c
- * - Lanza procesos: comando, artillerías (una por objetivo), camiones (uno por cada vehículo).
- * - Modo de salida concisa: imprime solo hitos importantes y resumen final.
+/*
+ * Proyecto DroneWars2 - Archivo Principal
+ * Curso: Sistemas Operativos
+ * 
+ * Este programa lanza todos los procesos del simulador:
+ * - Centro de comando (coordina enjambres)
+ * - Sistemas de artilleria (uno por objetivo)
+ * - Camiones (lanzan drones)
  */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -36,11 +40,12 @@ typedef struct
     int obj_count;
 } Config;
 
-static pid_t pid_comando = -1;
-static pid_t pid_art[MAXN];
-static pid_t pid_camion[MAXN];
-static int n_art = 0, n_cam = 0;
-static volatile sig_atomic_t interrupted = 0;
+// Variables globales para controlar los procesos
+static pid_t proceso_comando = -1;
+static pid_t procesos_artilleria[MAXN];
+static pid_t procesos_camiones[MAXN];
+static int num_sistemas_artilleria = 0, num_camiones = 0;
+static volatile sig_atomic_t simulacion_interrumpida = 0;
 
 static void trim(char *s)
 {
@@ -166,7 +171,7 @@ static int load_config(Config *c)
 static void on_sigint(int sig)
 {
     (void)sig;
-    interrupted = 1;
+    simulacion_interrumpida = 1;
 }
 
 static pid_t launch(const char *path, char *const argv[])
@@ -197,60 +202,60 @@ int main(void)
     printf("Camiones=%d | Objetivos=%d | W=%d%% | Q=%d%% | Z=%ds | Fuel=%d | RadioAA=%d\n",
            C.num_camiones, C.num_objetivos, C.prob_derribo, C.prob_perdida, C.z_reest, C.comb_inicial, C.radio_aa);
 
-    // COMANDO
+    // COMANDO - Lanzar el centro de comando
     {
         char *const av[] = {"./comando", NULL};
-        pid_comando = launch("./comando", av);
-        if (pid_comando < 0)
+        proceso_comando = launch("./comando", av);
+        if (proceso_comando < 0)
             return 1;
         usleep(200000); // 200 ms para que el comando quede escuchando
     }
 
-    // ARTILLERÍAS
-    n_art = C.num_objetivos;
-    for (int i = 0; i < n_art; i++)
+    // ARTILLERIAS - Una por cada objetivo
+    num_sistemas_artilleria = C.num_objetivos;
+    for (int i = 0; i < num_sistemas_artilleria; i++)
     {
         char idb[16];
         snprintf(idb, sizeof(idb), "%d", i);
         char *const av[] = {"./artilleria", idb, NULL};
-        pid_art[i] = launch("./artilleria", av);
+        procesos_artilleria[i] = launch("./artilleria", av);
     }
 
-    // CAMIONES
-    n_cam = C.num_camiones;
-    for (int i = 0; i < n_cam; i++)
+    // CAMIONES - Lanzar todos los camiones
+    num_camiones = C.num_camiones;
+    for (int i = 0; i < num_camiones; i++)
     {
         char idb[16];
         snprintf(idb, sizeof(idb), "%d", i);
         char *const av[] = {"./camion", idb, NULL};
-        pid_camion[i] = launch("./camion", av);
+        procesos_camiones[i] = launch("./camion", av);
     }
 
-    // Espera a que COMANDO termine o Ctrl+C
+    // Esperar a que el COMANDO termine o recibir Ctrl+C
     int status = 0;
-    while (!interrupted)
+    while (!simulacion_interrumpida)
     {
-        pid_t r = waitpid(pid_comando, &status, WNOHANG);
-        if (r == pid_comando)
+        pid_t r = waitpid(proceso_comando, &status, WNOHANG);
+        if (r == proceso_comando)
             break;
         usleep(200000);
     }
 
-    // Apagar resto
-    for (int i = 0; i < n_cam; i++)
-        if (pid_camion[i] > 0)
-            kill(pid_camion[i], SIGTERM);
-    for (int i = 0; i < n_art; i++)
-        if (pid_art[i] > 0)
-            kill(pid_art[i], SIGTERM);
-    for (int i = 0; i < n_cam; i++)
-        if (pid_camion[i] > 0)
-            waitpid(pid_camion[i], NULL, 0);
-    for (int i = 0; i < n_art; i++)
-        if (pid_art[i] > 0)
-            waitpid(pid_art[i], NULL, 0);
-    if (pid_comando > 0)
-        waitpid(pid_comando, NULL, 0);
+    // Terminar todos los procesos restantes
+    for (int i = 0; i < num_camiones; i++)
+        if (procesos_camiones[i] > 0)
+            kill(procesos_camiones[i], SIGTERM);
+    for (int i = 0; i < num_sistemas_artilleria; i++)
+        if (procesos_artilleria[i] > 0)
+            kill(procesos_artilleria[i], SIGTERM);
+    for (int i = 0; i < num_camiones; i++)
+        if (procesos_camiones[i] > 0)
+            waitpid(procesos_camiones[i], NULL, 0);
+    for (int i = 0; i < num_sistemas_artilleria; i++)
+        if (procesos_artilleria[i] > 0)
+            waitpid(procesos_artilleria[i], NULL, 0);
+    if (proceso_comando > 0)
+        waitpid(proceso_comando, NULL, 0);
 
     printf("Simulación finalizada.\n");
     return 0;

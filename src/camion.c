@@ -1,8 +1,12 @@
-/**
- * camion.c
- * - Cada camión lanza la cantidad de drones según CAMION_CARGAS (p.ej., 4A1C;3A;2A;4A).
- * - Cada dron elige un objetivo aleatorio (enjambre = índice del objetivo).
- * - Salida concisa: solo una línea de inicio y una línea por dron lanzado.
+/*
+ * Programa del CAMION - camion.c
+ * Curso: Sistemas Operativos
+ * 
+ * Cada camion lanza sus drones segun la configuracion:
+ * - Lee la cantidad de drones por camion del archivo config
+ * - Cada drone elige un objetivo aleatorio para despistar al enemigo
+ * - Usa fork() y execv() para crear procesos drone
+ * - Espera a que terminen todos sus drones antes de finalizar
  */
 #define _GNU_SOURCE
 #include <stdio.h>

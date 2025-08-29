@@ -1,11 +1,12 @@
-/**
- * comando.c
- * - Enjambres indexados por OBJETIVO (no por camión).
- * - COMPLETO = exactamente (>=4 ataque) y (>=1 cámara) en zona de ensamble.
- * - Re-ensamblaje alternado izq-der, priorizando el TIPO que falta (primero cámara, luego ataque).
- * - Al derribo: deduplicado en AA, aquí se envía ABORTAR al dron y se marca finalizado.
- * - Salida concisa: COMPLETO, Impacto/Reporte, Resumen final.
- * - VERBOSE=1 (config.txt) muestra trazas de re-ensamble y link si hiciera falta.
+/*
+ * Centro de Comando - comando.c
+ * Curso: Sistemas Operativos
+ * 
+ * Este programa coordina todos los drones del sistema:
+ * - Forma enjambres de 5 drones (4 ataque + 1 camara) por objetivo
+ * - Re-asigna drones entre enjambres cuando es necesario
+ * - Maneja comunicacion con drones y artilleria
+ * - Muestra progreso de la mision
  */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -54,6 +55,7 @@ typedef struct {
     int ens_attack;            // cuántos ATAQUE están en zona
     int ens_camera;            // cuántos CAMARA están en zona
     int completos;             // 1 si 4A+1C
+    int en_mision;             // 1 si ya salió hacia el objetivo
     int activos;               // conectados y no finalizados
     int detonaciones;
     int camara_reporto;
@@ -122,7 +124,7 @@ static void init_state(void){
     for(int i=0;i<MAX_DRONES;i++){ DR[i].id=-1; DR[i].sock=-1; }
     for(int i=0;i<CFG.num_objetivos;i++){
         ENJ[i].id=i; ENJ[i].ens_attack=0; ENJ[i].ens_camera=0; ENJ[i].completos=0;
-        ENJ[i].activos=0; ENJ[i].detonaciones=0; ENJ[i].camara_reporto=0;
+        ENJ[i].en_mision=0; ENJ[i].activos=0; ENJ[i].detonaciones=0; ENJ[i].camara_reporto=0;
         ENJ[i].last_reassign_ts=0; ENJ[i].last_donor=-1; ENJ[i].last_donor_ts=0;
         pthread_mutex_init(&ENJ[i].lock,NULL);
         BL[i].id=i; BL[i].pos=CFG.objetivos[i]; BL[i].estado=0; BL[i].impactos=0;
@@ -132,16 +134,199 @@ static void init_state(void){
             last_pair_move[a][b]=0;
 }
 
+static void print_final_swarm_composition() {
+    printf("\n==== COMPOSICIÓN FINAL DE ENJAMBRES ====\n");
+    for(int i = 0; i < CFG.num_objetivos; i++) {
+        int attack_count = 0, camera_count = 0;
+        int attack_survived = 0, camera_survived = 0;
+        
+        // Contar drones por tipo que participaron en este enjambre
+        for(int j = 0; j < MAX_DRONES; j++) {
+            if(DR[j].id == j && DR[j].enjambre_id == i) {
+                if(DR[j].tipo == 0) { // Ataque
+                    attack_count++;
+                    if(!DR[j].finalizado) attack_survived++;
+                } else { // Cámara
+                    camera_count++;
+                    if(!DR[j].finalizado) camera_survived++;
+                }
+            }
+        }
+        
+        printf("[ENJAMBRE %d] Asignados: %dA+%dC | Sobrevivientes: %dA+%dC | Estado: %s | Detonaciones: %d\n",
+               i, attack_count, camera_count, attack_survived, camera_survived,
+               ENJ[i].completos ? "COMPLETO" : "INCOMPLETO", ENJ[i].detonaciones);
+    }
+    printf("===============================================\n");
+}
+
 static void eval_blanco(int ej){
     if(ej<0||ej>=CFG.num_objetivos) return;
-    if(ENJ[ej].detonaciones>=4 && ENJ[ej].completos) BL[ej].estado=2; // total
-    else if(ENJ[ej].detonaciones>0) BL[ej].estado=1;                 // parcial
+    if(ENJ[ej].detonaciones>=4) BL[ej].estado=2;        // total: 4+ detonaciones
+    else if(ENJ[ej].detonaciones>0) BL[ej].estado=1;    // parcial: 1-3 detonaciones
+    // intacto (estado=0) si detonaciones==0
+}
+
+// Función para donar excedentes cuando un enjambre esté completo
+static void donate_excess_drones(int ej){
+    if(ej<0||ej>=CFG.num_objetivos) return;
+    
+    // NO donar si el enjambre ya está en misión (evitar interferir con ataques)
+    if(ENJ[ej].en_mision) return;
+    
+    time_t now = time(NULL);
+    
+    // Verificar si estamos en condiciones perfectas (sin pérdidas)
+    int condiciones_perfectas = 1;
+    int total_drones_activos = 0;
+    int total_drones_esperados = 0;
+    
+    for(int i=0; i<CFG.num_objetivos; i++){
+        total_drones_activos += ENJ[i].activos;
+        total_drones_esperados += 5; // 5 drones por objetivo esperados (4A+1C)
+    }
+    
+    // Si tenemos menos drones activos de los esperados, no estamos en condiciones perfectas
+    if(total_drones_activos < (CFG.num_objetivos * 4)) { // Al menos 4 por objetivo
+        condiciones_perfectas = 0;
+    }
+    
+    // En condiciones perfectas, ser más agresivo con las donaciones
+    int puede_donar = 0;
+    if(condiciones_perfectas){
+        // En condiciones perfectas, donar si tiene excedentes (aún sin estar completo)
+        puede_donar = (ENJ[ej].ens_attack > 4 || ENJ[ej].ens_camera > 1);
+    } else {
+        // En condiciones normales, solo donar si ya está completo
+        puede_donar = ENJ[ej].completos;
+    }
+    
+    if(!puede_donar) return;
+    
+    // Donar drones de ataque excedentes (más de 4)
+    while(ENJ[ej].ens_attack > 4){
+        // En condiciones perfectas, donar agresivamente
+        // En condiciones normales, mantener al menos 4 si está completo
+        if(!condiciones_perfectas && ENJ[ej].completos && ENJ[ej].ens_attack <= 4) break;
+        
+        // Buscar un enjambre que necesite drones de ataque
+        int best_dest = -1;
+        for(int dest=0; dest<CFG.num_objetivos; dest++){
+            if(dest == ej) continue; // No donarse a sí mismo
+            if(ENJ[dest].en_mision) continue; // No donar a enjambres en misión
+            if(!condiciones_perfectas && ENJ[dest].completos) continue; // En condiciones normales, no donar a completos
+            if(ENJ[dest].ens_attack < 4){ // Necesita drones de ataque
+                best_dest = dest;
+                break;
+            }
+        }
+        
+        if(best_dest == -1) break; // No hay quien necesite
+        
+        // Buscar un dron de ataque disponible para donar
+        int donor_drone = -1;
+        for(int i=0; i<MAX_DRONES; i++){
+            if(DR[i].id==i && DR[i].enjambre_id==ej && DR[i].conectado && 
+               !DR[i].finalizado && DR[i].tipo==0 && DR[i].en_ensamble==1){
+                if(DR[i].last_moved_ts && (now - DR[i].last_moved_ts) < 3) continue; // Reducido a 3s en condiciones perfectas
+                donor_drone = i;
+                break;
+            }
+        }
+        
+        if(donor_drone == -1) break; // No hay dron disponible
+        
+        // Realizar la donación
+        if(pthread_mutex_trylock(&ENJ[best_dest].lock)==0){
+            char reas[40]; snprintf(reas,sizeof(reas),"REASIGNAR:%d",best_dest); 
+            send_to_drone(DR[donor_drone].sock, reas);
+            char dsp[32]; snprintf(dsp,sizeof(dsp),"DESPEGAR:%d",best_dest); 
+            send_to_drone(DR[donor_drone].sock, dsp);
+
+            ENJ[ej].activos--; ENJ[best_dest].activos++;
+            ENJ[ej].ens_attack--; ENJ[best_dest].ens_attack++;
+            
+            DR[donor_drone].enjambre_id = best_dest;
+            DR[donor_drone].last_moved_ts = now;
+            
+            if(CFG.verbose){
+                printf("[DONACION%s] obj %d → obj %d: dron %d (tipo=ATAQUE) [balanceando]\n",
+                       condiciones_perfectas ? " PERFECTA" : "", ej, best_dest, DR[donor_drone].id);
+            }
+            
+            pthread_mutex_unlock(&ENJ[best_dest].lock);
+        } else {
+            break; // No se pudo obtener lock
+        }
+    }
+    
+    // Donar drones de cámara excedentes (más de 1)
+    while(ENJ[ej].ens_camera > 1){
+        // En condiciones perfectas, donar agresivamente
+        // En condiciones normales, mantener al menos 1 si está completo
+        if(!condiciones_perfectas && ENJ[ej].completos && ENJ[ej].ens_camera <= 1) break;
+        
+        // Buscar un enjambre que necesite drones de cámara
+        int best_dest = -1;
+        for(int dest=0; dest<CFG.num_objetivos; dest++){
+            if(dest == ej) continue;
+            if(ENJ[dest].en_mision) continue; // No donar a enjambres en misión
+            if(!condiciones_perfectas && ENJ[dest].completos) continue; // En condiciones normales, no donar a completos
+            if(ENJ[dest].ens_camera < 1){ // Necesita cámara
+                best_dest = dest;
+                break;
+            }
+        }
+        
+        if(best_dest == -1) break;
+        
+        // Buscar un dron de cámara disponible para donar
+        int donor_drone = -1;
+        for(int i=0; i<MAX_DRONES; i++){
+            if(DR[i].id==i && DR[i].enjambre_id==ej && DR[i].conectado && 
+               !DR[i].finalizado && DR[i].tipo==1 && DR[i].en_ensamble==1){
+                if(DR[i].last_moved_ts && (now - DR[i].last_moved_ts) < 3) continue; // Reducido a 3s en condiciones perfectas
+                donor_drone = i;
+                break;
+            }
+        }
+        
+        if(donor_drone == -1) break;
+        
+        // Realizar la donación
+        if(pthread_mutex_trylock(&ENJ[best_dest].lock)==0){
+            char reas[40]; snprintf(reas,sizeof(reas),"REASIGNAR:%d",best_dest); 
+            send_to_drone(DR[donor_drone].sock, reas);
+            char dsp[32]; snprintf(dsp,sizeof(dsp),"DESPEGAR:%d",best_dest); 
+            send_to_drone(DR[donor_drone].sock, dsp);
+
+            ENJ[ej].activos--; ENJ[best_dest].activos++;
+            ENJ[ej].ens_camera--; ENJ[best_dest].ens_camera++;
+            
+            DR[donor_drone].enjambre_id = best_dest;
+            DR[donor_drone].last_moved_ts = now;
+            
+            if(CFG.verbose){
+                printf("[DONACION%s] obj %d → obj %d: dron %d (tipo=CAMARA) [balanceando]\n",
+                       condiciones_perfectas ? " PERFECTA" : "", ej, best_dest, DR[donor_drone].id);
+            }
+            
+            pthread_mutex_unlock(&ENJ[best_dest].lock);
+        } else {
+            break;
+        }
+    }
 }
 
 static void maybe_mark_enjambre_completo(int ej){
     if(ej<0||ej>=CFG.num_objetivos) return;
-    if(!ENJ[ej].completos && ENJ[ej].ens_attack>=4 && ENJ[ej].ens_camera>=1){
-        ENJ[ej].completos=1;
+    
+    // Siempre re-evaluar el estado completo basado en conteos actuales
+    int era_completo = ENJ[ej].completos;
+    ENJ[ej].completos = (ENJ[ej].ens_attack>=4 && ENJ[ej].ens_camera>=1);
+    
+    // Si ahora es completo pero antes no era, notificar a los drones
+    if(ENJ[ej].completos && !era_completo){
         // notifica a todos los drones de ese enjambre
         for(int i=0;i<MAX_DRONES;i++){
             if(DR[i].id==i && DR[i].enjambre_id==ej && DR[i].conectado && !DR[i].finalizado){
@@ -149,13 +334,21 @@ static void maybe_mark_enjambre_completo(int ej){
             }
         }
         printf("[CMD] Enjambre obj %d COMPLETO\n", ej);
+        
+        // Donar excedentes después de completar (reactivado)
+        donate_excess_drones(ej);
     }
 }
 
 // ------------- re-ensamblaje -------------
 static int donor_has_type(int ej, int tipo){
-    // no robar de completos
-    if(ENJ[ej].completos) return 0;
+    // Si está completo, puede donar excedentes
+    if(ENJ[ej].completos) {
+        if(tipo==0) return ENJ[ej].ens_attack > 4; // Puede donar ataque si tiene más de 4
+        else        return ENJ[ej].ens_camera > 1; // Puede donar cámara si tiene más de 1
+    }
+    
+    // Si no está completo, comportamiento original
     // tiene alguien activo?
     if(ENJ[ej].activos<=1) return 0;
     // tiene del tipo pedido?
@@ -233,9 +426,43 @@ static int try_reassign_one(int dest){
 }
 
 static void reensamblar(void){
+    // Solo reensamblar si hay evidencia de pérdidas en combate
+    int hay_perdidas = 0;
+    int total_activos = 0;
+    int total_inicial = 0;
+    
+    for(int i=0; i<CFG.num_objetivos; i++){
+        total_activos += ENJ[i].activos;
+    }
+    
+    // Calcular total inicial esperado (20A + 8C = 28 drones)
+    total_inicial = CFG.num_camiones * 7; // Asumiendo 5A+2C por camión
+    
+    // Si perdimos drones, entonces hay necesidad de reensamblaje
+    if(total_activos < total_inicial) {
+        hay_perdidas = 1;
+    }
+    
+    // En condiciones perfectas (sin pérdidas), no hacer reensamblaje agresivo
+    if(!hay_perdidas) {
+        printf("[SISTEMA] Condiciones perfectas detectadas - reensamblaje limitado\n");
+        return;
+    }
+    
+    printf("[SISTEMA] Pérdidas detectadas (%d/%d drones) - iniciando reensamblaje\n", 
+           total_activos, total_inicial);
+    
+    // Primero, intentar reasignar a enjambres incompletos
     for(int i=0;i<CFG.num_objetivos;i++){
         if(!ENJ[i].completos){
             (void)try_reassign_one(i);
+        }
+    }
+    
+    // Segundo, donar excedentes de enjambres completos
+    for(int i=0;i<CFG.num_objetivos;i++){
+        if(ENJ[i].completos){
+            donate_excess_drones(i);
         }
     }
 }
@@ -259,7 +486,36 @@ static int check_termination(void){
     // Si aún no hay drones registrados, no termines
     if (registrados == 0) return 0;
 
-    if(CFG.num_objetivos>0 && atacados>=CFG.num_objetivos) return 1;
+    // NUEVA LÓGICA: Verificar si todos los enjambres completos han alcanzado su máximo potencial
+    int puede_mejorar = 0;
+    int tiempo_transcurrido = (int)(now - SIM_START);
+    
+    for(int i = 0; i < CFG.num_objetivos; i++){
+        if(ENJ[i].completos){
+            // Si es completo pero aún no ha llegado a 4 detonaciones
+            if(ENJ[i].detonaciones < 4){
+                // Verificar si aún hay drones activos de ataque que puedan detonar
+                int ataques_activos = 0;
+                for(int j = 0; j < MAX_DRONES; j++){
+                    if(DR[j].id == j && DR[j].enjambre_id == i && 
+                       DR[j].conectado && !DR[j].finalizado && 
+                       DR[j].tipo == 0 && !DR[j].detono){
+                        ataques_activos++;
+                    }
+                }
+                // Si aún hay drones de ataque activos Y no ha pasado mucho tiempo, puede mejorar
+                if(ataques_activos > 0 && tiempo_transcurrido < 20){
+                    puede_mejorar = 1;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Solo terminar por "todos atacados" si no puede mejorar más
+    if(CFG.num_objetivos>0 && atacados>=CFG.num_objetivos && !puede_mejorar) return 1;
+    
+    // Otras condiciones de terminación
     if((int)(now - SIM_START) >= SIM_TIMEOUT) return 1;
     if(finalizados >= (registrados*9/10)) return 1;
     if(activos==0) return 1;
@@ -270,14 +526,34 @@ static int check_termination(void){
 static void print_stats(void){
     int b_tot=0,b_par=0,b_int=0;
     for(int i=0;i<CFG.num_objetivos;i++){
-        if(BL[i].estado==2) b_tot++; else if(BL[i].estado==1) b_par++; else b_int++;
+        if(BL[i].estado==0) b_int++;
+        else if(BL[i].estado==1) b_par++;
+        else b_tot++;
     }
+
     printf("\n==== RESUMEN ====\n");
-    printf("Blancos: Total=%d  Parcial=%d  Intactos=%d  (de %d)\n", b_tot,b_par,b_int, CFG.num_objetivos);
-    int exito=0; for(int i=0;i<MAX_DRONES;i++) if(DR[i].id!=-1 && (DR[i].detono||DR[i].reporto||DR[i].finalizado)) exito++;
+    printf("Blancos: Total=%d  Parcial=%d  Intactos=%d  (de %d)\n", b_tot,b_par,b_int,CFG.num_objetivos);
+    
+    // NUEVO: Debug detallado de cada objetivo
+    for(int i=0;i<CFG.num_objetivos;i++){
+        printf("[DEBUG] Obj %d: completo=%s, detonaciones=%d, estado=%s\n", 
+               i, 
+               ENJ[i].completos ? "SI" : "NO", 
+               ENJ[i].detonaciones,
+               BL[i].estado==0 ? "INTACTO" : (BL[i].estado==1 ? "PARCIAL" : "TOTAL"));
+    }
+
+    int exito=0;
+    for(int i=0;i<MAX_DRONES;i++) if(DR[i].finalizado) exito++;
     printf("Drones finalizados: %d\n", exito);
-    float efect = (float)(b_tot+b_par)/(float)(CFG.num_objetivos?CFG.num_objetivos:1)*100.f;
-    printf("Efectividad: %.1f%%\n", efect);
+
+    float efectividad = CFG.num_objetivos>0 ? (100.0f*(b_tot+b_par)/CFG.num_objetivos) : 0.0f;
+    printf("Efectividad: %.1f%%\n", efectividad);
+    
+    // Mostrar composición final de enjambres después del reensamblado
+    print_final_swarm_composition();
+    
+    printf("Simulación finalizada.\n");
 }
 
 // ------------- manejo mensajes -------------
@@ -356,8 +632,10 @@ static void handle_artillery(const char*msg){
     if(DR[id].en_ensamble){
         if(DR[id].tipo==0 && ENJ[ej].ens_attack>0) ENJ[ej].ens_attack--;
         if(DR[id].tipo==1 && ENJ[ej].ens_camera>0) ENJ[ej].ens_camera--;
-        ENJ[ej].completos = (ENJ[ej].ens_attack>=4 && ENJ[ej].ens_camera>=1);
     }
+
+    // Re-evaluar estado completo después del derribo
+    maybe_mark_enjambre_completo(ej);
 
     // Intentar re-ensamblar si ese enjambre quedó incompleto
     if(!ENJ[ej].completos) reensamblar();
@@ -398,7 +676,19 @@ int main(void){
                 }
             }
         }
-        reensamblar();
+        
+        // Solo reensamblar si hay enjambres incompletos que necesitan ayuda
+        int necesita_reensamblado = 0;
+        for(int i=0; i<CFG.num_objetivos; i++){
+            if(!ENJ[i].completos && ENJ[i].activos > 0 && !ENJ[i].en_mision) {
+                necesita_reensamblado = 1;
+                break;
+            }
+        }
+        if(necesita_reensamblado) {
+            reensamblar();
+        }
+        
         if(check_termination()) break;
     }
     print_stats();
