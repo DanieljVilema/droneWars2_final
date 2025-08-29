@@ -33,6 +33,7 @@ typedef struct { int x,y; } Coordinate;
 
 typedef struct {
     int num_camiones, num_objetivos, puerto_comando, verbose;
+    int probabilidad_derribo, probabilidad_perdida_com, tiempo_reestablecimiento;
     Coordinate objetivos[MAX_ENJ]; int obj_count;
 } Config;
 
@@ -92,7 +93,10 @@ static int parse_coords_list(const char*s,Coordinate*a,int cap){
     } free(dup); return cnt;
 }
 static int load_config(Config*c){
-    memset(c,0,sizeof(*c)); c->num_camiones=2; c->num_objetivos=2; c->puerto_comando=8080; c->verbose=0;
+    memset(c,0,sizeof(*c)); 
+    c->num_camiones=2; c->num_objetivos=2; c->puerto_comando=8080; c->verbose=0;
+    c->probabilidad_derribo=15; c->probabilidad_perdida_com=5; c->tiempo_reestablecimiento=2;
+    
     FILE*f=fopen(CFG_PATH,"r"); if(!f){ perror("comando:config"); return 0; }
     char line[MAX_STR];
     while(fgets(line,sizeof(line),f)){
@@ -103,6 +107,9 @@ static int load_config(Config*c){
         else if(!strcmp(k,"PUERTO_COMANDO")) parse_int(v,&c->puerto_comando);
         else if(!strcmp(k,"COORDENADAS_OBJETIVOS")) c->obj_count=parse_coords_list(v,c->objetivos,MAX_ENJ);
         else if(!strcmp(k,"VERBOSE")) parse_int(v,&c->verbose);
+        else if(!strcmp(k,"PROBABILIDAD_DERRIBO")) parse_int(v,&c->probabilidad_derribo);
+        else if(!strcmp(k,"PROBABILIDAD_PERDIDA_COM")) parse_int(v,&c->probabilidad_perdida_com);
+        else if(!strcmp(k,"TIEMPO_REESTABLECIMIENTO")) parse_int(v,&c->tiempo_reestablecimiento);
     }
     fclose(f);
     if(c->obj_count<c->num_objetivos) c->obj_count=c->num_objetivos;
@@ -352,8 +359,55 @@ static int all_swarms_ready_for_mission(void) {
     return 1;
 }
 
+// NUEVA FUNCIÓN: Simular ataques de defensa durante el viaje
+static void simulate_defense_attacks(void) {
+    if(CFG.verbose) {
+        printf("[DEFENSA] 🚨 Iniciando ataques de defensa durante el viaje...\n");
+    }
+    
+    for(int i = 0; i < CFG.num_objetivos; i++) {
+        if(ENJ[i].en_mision && ENJ[i].activos > 0) {
+            // Calcular drones perdidos según probabilidad de derribo
+            int drones_perdidos = 0;
+            int total_drones = ENJ[i].activos;
+            
+            // Aplicar probabilidad de derribo a cada dron
+            for(int j = 0; j < MAX_DRONES; j++) {
+                if(DR[j].id == j && DR[j].enjambre_id == i && 
+                   DR[j].conectado && !DR[j].finalizado && !DR[j].derribado) {
+                    
+                    // Simular ataque de defensa
+                    int random_val = rand() % 100;
+                    if(random_val < CFG.probabilidad_derribo) {
+                        // Dron derribado
+                        DR[j].derribado = 1;
+                        DR[j].finalizado = 1;
+                        ENJ[i].activos--;
+                        drones_perdidos++;
+                        
+                        if(CFG.verbose) {
+                            printf("[DEFENSA] 💥 Dron %d derribado por defensa\n", DR[j].id);
+                        }
+                    }
+                }
+            }
+            
+            if(CFG.verbose && drones_perdidos > 0) {
+                printf("[DEFENSA] Enjambre %d: %d/%d drones perdidos\n", 
+                       i, drones_perdidos, total_drones);
+            }
+        }
+    }
+    
+    if(CFG.verbose) {
+        printf("[DEFENSA] ✅ Ataques de defensa completados\n");
+    }
+}
+
 // Nueva función para iniciar la misión de todos los enjambres
 static void start_mission_for_all_swarms(void) {
+    printf("[SISTEMA] 🚀 INICIANDO FASE DE COMBATE\n");
+    
     for(int i = 0; i < CFG.num_objetivos; i++) {
         if(!ENJ[i].en_mision && ENJ[i].activos > 0) {
             ENJ[i].en_mision = 1;
@@ -364,7 +418,33 @@ static void start_mission_for_all_swarms(void) {
                     send_to_drone(DR[j].sock, "INICIAR_MISION");
                 }
             }
-            printf("[CMD] Enjambre obj %d iniciando misión\n", i);
+            printf("[CMD] Enjambre obj %d iniciando misión (%dA+%dC)\n", 
+                   i, ENJ[i].ens_attack, ENJ[i].ens_camera);
+        }
+    }
+    
+    // FASE 1: Simular ataques de defensa durante el viaje
+    printf("[SISTEMA] 🎯 FASE 1: Ataques de defensa durante el viaje\n");
+    simulate_defense_attacks();
+    
+    // FASE 2: Reensamblaje con sobrevivientes
+    printf("[SISTEMA] 🔄 FASE 2: Reensamblaje con sobrevivientes\n");
+    reensamblar();
+    
+    // FASE 3: Todos caen en picada hacia objetivos
+    printf("[SISTEMA] 💥 FASE 3: Todos los enjambres caen en picada\n");
+    for(int i = 0; i < CFG.num_objetivos; i++) {
+        if(ENJ[i].en_mision && ENJ[i].activos > 0) {
+            for(int j = 0; j < MAX_DRONES; j++) {
+                if(DR[j].id == j && DR[j].enjambre_id == i && 
+                   DR[j].conectado && !DR[j].finalizado) {
+                    if(DR[j].tipo == 0) { // Dron de ataque
+                        send_to_drone(DR[j].sock, "CAIDA_PICADA");
+                    } else { // Dron de cámara
+                        send_to_drone(DR[j].sock, "AUTODESTRUCCION");
+                    }
+                }
+            }
         }
     }
 }
@@ -727,6 +807,10 @@ int main(void){
     if(!load_config(&CFG)) return 1;
     srv_sock=open_server(CFG.puerto_comando); if(srv_sock<0){ perror("comando:listen"); return 1; }
     SIM_START=time(NULL);
+    
+    // Inicializar generador de números aleatorios para simulación de ataques
+    srand((unsigned int)time(NULL));
+    
     init_state();
 
     for(;;){
