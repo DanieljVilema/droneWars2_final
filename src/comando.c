@@ -487,12 +487,15 @@ static void reensamblar(void){
         return;
     }
     
-    // Solo mostrar pérdidas significativas (cada 5 drones perdidos o primera pérdida)
-    static int last_loss_count = 0;
-    if(total_activos < last_loss_count - 5 || total_activos == total_inicial - 1) {
-        printf("[SISTEMA] Pérdidas: %d/%d drones - reensamblaje activo\n", 
-               total_activos, total_inicial);
-        last_loss_count = total_activos;
+    // En modo silencioso, NO mostrar mensajes de reensamblaje
+    if(CFG.verbose) {
+        // Solo mostrar pérdidas significativas (cada 5 drones perdidos o primera pérdida)
+        static int last_loss_count = 0;
+        if(total_activos < last_loss_count - 5 || total_activos == total_inicial - 1) {
+            printf("[SISTEMA] Pérdidas: %d/%d drones - reensamblaje activo\n", 
+                   total_activos, total_inicial);
+            last_loss_count = total_activos;
+        }
     }
     
     // Primero, intentar reasignar a enjambres incompletos
