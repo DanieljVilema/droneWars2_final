@@ -146,9 +146,7 @@ int main(int argc,char**argv){
                             if(rand()%100 < CFG.prob_derribo){
                                 set_knocked(id);
                                 notify_cmd_derribo(id);
-                                if(CFG.verbose) {
-                                    printf("[AA %d] Derribo dron %d\n", ART_ID, id);
-                                }
+                                // Derribo silencioso - no mostrar mensaje
                             }
                         }
                     } else {

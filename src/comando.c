@@ -256,10 +256,7 @@ static void donate_excess_drones(int ej){
             DR[donor_drone].enjambre_id = best_dest;
             DR[donor_drone].last_moved_ts = now;
             
-            if(CFG.verbose){
-                printf("[DONACION] obj %d → obj %d: dron %d (ATAQUE)\n",
-                       ej, best_dest, DR[donor_drone].id);
-            }
+            // Donación silenciosa - no mostrar mensajes
             
             pthread_mutex_unlock(&ENJ[best_dest].lock);
         } else {
@@ -313,10 +310,7 @@ static void donate_excess_drones(int ej){
             DR[donor_drone].enjambre_id = best_dest;
             DR[donor_drone].last_moved_ts = now;
             
-            if(CFG.verbose){
-                printf("[DONACION] obj %d → obj %d: dron %d (CAMARA)\n",
-                       ej, best_dest, DR[donor_drone].id);
-            }
+            // Donación silenciosa - no mostrar mensajes
             
             pthread_mutex_unlock(&ENJ[best_dest].lock);
         } else {
@@ -361,13 +355,8 @@ static int all_swarms_ready_for_mission(void) {
 
 // NUEVA FUNCIÓN: Simular ataques de defensa durante el viaje
 static void simulate_defense_attacks(void) {
-    if(CFG.verbose) {
-        printf("[DEFENSA] 🚨 Iniciando ataques de defensa durante el viaje...\n");
-    }
-    
     for(int i = 0; i < CFG.num_objetivos; i++) {
         if(ENJ[i].en_mision && ENJ[i].activos > 0) {
-            // Calcular drones perdidos según probabilidad de derribo
             int drones_perdidos = 0;
             int total_drones = ENJ[i].activos;
             
@@ -384,23 +373,16 @@ static void simulate_defense_attacks(void) {
                         DR[j].finalizado = 1;
                         ENJ[i].activos--;
                         drones_perdidos++;
-                        
-                        if(CFG.verbose) {
-                            printf("[DEFENSA] 💥 Dron %d derribado por defensa\n", DR[j].id);
-                        }
                     }
                 }
             }
             
-            if(CFG.verbose && drones_perdidos > 0) {
+            // SOLO mostrar pérdidas significativas (más de 0)
+            if(drones_perdidos > 0) {
                 printf("[DEFENSA] Enjambre %d: %d/%d drones perdidos\n", 
                        i, drones_perdidos, total_drones);
             }
         }
-    }
-    
-    if(CFG.verbose) {
-        printf("[DEFENSA] ✅ Ataques de defensa completados\n");
     }
 }
 
@@ -410,7 +392,10 @@ static void reensamblar_solo_ensamblaje(void);  // Nueva función que solo reens
 
 // Nueva función para iniciar la misión de todos los enjambres
 static void start_mission_for_all_swarms(void) {
-    printf("[SISTEMA] 🚀 INICIANDO FASE DE COMBATE\n");
+    // NO mostrar mensajes de fases internas en modo silencioso
+    if(CFG.verbose) {
+        printf("[SISTEMA] 🚀 INICIANDO FASE DE COMBATE\n");
+    }
     
     for(int i = 0; i < CFG.num_objetivos; i++) {
         if(!ENJ[i].en_mision && ENJ[i].activos > 0) {
@@ -422,21 +407,21 @@ static void start_mission_for_all_swarms(void) {
                     send_to_drone(DR[j].sock, "INICIAR_MISION");
                 }
             }
-            printf("[CMD] Enjambre obj %d iniciando misión (%dA+%dC)\n", 
-                   i, ENJ[i].ens_attack, ENJ[i].ens_camera);
+            // Solo mostrar en modo verbose
+            if(CFG.verbose) {
+                printf("[CMD] Enjambre obj %d iniciando misión (%dA+%dC)\n", 
+                       i, ENJ[i].ens_attack, ENJ[i].ens_camera);
+            }
         }
     }
     
-    // FASE 1: Simular ataques de defensa durante el viaje
-    printf("[SISTEMA] 🎯 FASE 1: Ataques de defensa durante el viaje\n");
+    // FASE 1: Simular ataques de defensa durante el viaje (SILENCIOSA)
     simulate_defense_attacks();
     
-    // FASE 2: Reensamblaje con sobrevivientes (SIN llamar a start_mission)
-    printf("[SISTEMA] 🔄 FASE 2: Reensamblaje con sobrevivientes\n");
-    reensamblar_solo_ensamblaje();  // Nueva función que solo reensambla
+    // FASE 2: Reensamblaje con sobrevivientes (SILENCIOSO)
+    reensamblar_solo_ensamblaje();
     
-    // FASE 3: Todos caen en picada hacia objetivos
-    printf("[SISTEMA] 💥 FASE 3: Todos los enjambres caen en picada\n");
+    // FASE 3: Todos caen en picada hacia objetivos (SILENCIOSA)
     for(int i = 0; i < CFG.num_objetivos; i++) {
         if(ENJ[i].en_mision && ENJ[i].activos > 0) {
             for(int j = 0; j < MAX_DRONES; j++) {
@@ -468,20 +453,14 @@ static void maybe_mark_enjambre_completo(int ej){
                 send_to_drone(DR[i].sock,"ENJAMBRE_COMPLETO");
             }
         }
-        printf("[CMD] Enjambre obj %d COMPLETO\n", ej);
+        // Enjambre completo - no mostrar mensaje
         
         // Donar excedentes después de completar (reactivado)
         donate_excess_drones(ej);
         
         // Verificar si todos los enjambres están listos para la misión
         if(all_swarms_ready_for_mission()) {
-            if(CFG.verbose) {
-                printf("[SISTEMA] ✅ NO hay posibilidad de formar más enjambres completos\n");
-                printf("[SISTEMA] 🚀 INICIANDO MISIÓN - Todos los enjambres salen simultáneamente\n");
-            }
             start_mission_for_all_swarms();
-        } else if(CFG.verbose) {
-            printf("[SISTEMA] ⏳ Esperando completar ensamblaje - aún hay posibilidad de formar enjambres completos\n");
         }
     }
 }
@@ -552,10 +531,7 @@ static int try_reassign_one(int dest){
                             ENJ[dest].last_reassign_ts=now; ENJ[dest].last_donor=ej; ENJ[dest].last_donor_ts=now;
                             last_pair_move[ej][dest]=now;
 
-                            if(CFG.verbose){
-                                printf("[REASM] obj %d ← dron %d (tipo=%s) desde obj %d\n",
-                                       dest, DR[did].id, needed==0?"ATAQUE":"CAMARA", ej);
-                            }
+                            // Reasignación silenciosa - no mostrar mensajes
 
                             pthread_mutex_unlock(&ENJ[dest].lock); pthread_mutex_unlock(&ENJ[ej].lock);
                             maybe_mark_enjambre_completo(dest);
@@ -591,22 +567,7 @@ static void reensamblar(void){
     
     // En condiciones perfectas (sin pérdidas), no hacer reensamblaje agresivo
     if(!hay_perdidas) {
-        // Solo mostrar en modo verbose
-        if(CFG.verbose) {
-            printf("[SISTEMA] Condiciones perfectas - reensamblaje limitado\n");
-        }
         return;
-    }
-    
-    // En modo silencioso, NO mostrar mensajes de reensamblaje
-    if(CFG.verbose) {
-        // Solo mostrar pérdidas significativas (cada 5 drones perdidos o primera pérdida)
-        static int last_loss_count = 0;
-        if(total_activos < last_loss_count - 5 || total_activos == total_inicial - 1) {
-            printf("[SISTEMA] Pérdidas: %d/%d drones - reensamblaje activo\n", 
-           total_activos, total_inicial);
-            last_loss_count = total_activos;
-        }
     }
     
     // Primero, intentar reasignar a enjambres incompletos
@@ -650,15 +611,7 @@ static void reensamblar_solo_ensamblaje(void) {
     
     // En condiciones perfectas (sin pérdidas), no hacer reensamblaje agresivo
     if(!hay_perdidas) {
-        if(CFG.verbose) {
-            printf("[SISTEMA] Condiciones perfectas - reensamblaje limitado\n");
-        }
         return;
-    }
-    
-    if(CFG.verbose) {
-        printf("[SISTEMA] Reensamblando con %d/%d drones sobrevivientes\n", 
-               total_activos, total_inicial);
     }
     
     // Primero, intentar reasignar a enjambres incompletos
@@ -676,9 +629,6 @@ static void reensamblar_solo_ensamblaje(void) {
     }
     
     // NO llamar a start_mission_for_all_swarms() aquí para evitar bucles
-    if(CFG.verbose) {
-        printf("[SISTEMA] Reensamblaje completado - continuando con caída en picada\n");
-    }
 }
 
 // ------------- fin/estadísticas -------------
@@ -712,9 +662,6 @@ static int check_termination(void){
     
     // Si todos los enjambres completaron su misión, terminar
     if(todos_enjambres_completaron && atacados > 0) {
-        if(CFG.verbose) {
-            printf("[SISTEMA] Todos los enjambres completaron misión - terminando\n");
-        }
         return 1;
     }
     
@@ -738,14 +685,12 @@ static void print_stats(void){
     printf("Blancos: Total=%d  Parcial=%d  Intactos=%d  (de %d)\n", b_tot,b_par,b_int,CFG.num_objetivos);
     
     // Debug conciso de cada objetivo
-    if(CFG.verbose){
     for(int i=0;i<CFG.num_objetivos;i++){
-            printf("[DEBUG] Obj %d: %s, %d det, %s\n", 
+        printf("[DEBUG] Obj %d: %s, %d det, %s\n", 
                i, 
-                   ENJ[i].completos ? "COMPLETO" : "INCOMPLETO", 
+               ENJ[i].completos ? "COMPLETO" : "INCOMPLETO", 
                ENJ[i].detonaciones,
                BL[i].estado==0 ? "INTACTO" : (BL[i].estado==1 ? "PARCIAL" : "TOTAL"));
-        }
     }
 
     int exito=0;
