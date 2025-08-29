@@ -78,6 +78,7 @@ static Enjambre ENJ[MAX_ENJ];
 static Blanco   BL[MAX_ENJ];
 static time_t SIM_START;
 static time_t last_pair_move[MAX_ENJ][MAX_ENJ]; // anti ping-pong
+static int MISSION_STARTED = 0;  // BANDERA GLOBAL: prevenir múltiples inicios de misión
 
 // ------------- util -------------
 static void trim(char*s){ char*p=s; while(*p&&isspace((unsigned char)*p)) p++; if(p!=s) memmove(s,p,strlen(p)+1);
@@ -392,6 +393,12 @@ static void reensamblar_solo_ensamblaje(void);  // Nueva función que solo reens
 
 // Nueva función para iniciar la misión de todos los enjambres
 static void start_mission_for_all_swarms(void) {
+    // PREVENIR MÚLTIPLES INICIOS DE MISIÓN
+    if(MISSION_STARTED) {
+        return;  // La misión ya fue iniciada
+    }
+    MISSION_STARTED = 1;  // Marcar que la misión ya comenzó
+    
     // NO mostrar mensajes de fases internas en modo silencioso
     if(CFG.verbose) {
         printf("[SISTEMA] 🚀 INICIANDO FASE DE COMBATE\n");
@@ -459,7 +466,7 @@ static void maybe_mark_enjambre_completo(int ej){
         donate_excess_drones(ej);
         
         // Verificar si todos los enjambres están listos para la misión
-        if(all_swarms_ready_for_mission()) {
+        if(!MISSION_STARTED && all_swarms_ready_for_mission()) {
             start_mission_for_all_swarms();
         }
     }
@@ -585,7 +592,7 @@ static void reensamblar(void){
     }
     
     // Verificar si después del reensamblaje todos están listos para la misión
-    if(all_swarms_ready_for_mission()) {
+    if(!MISSION_STARTED && all_swarms_ready_for_mission()) {
         start_mission_for_all_swarms();
     }
 }
@@ -856,7 +863,7 @@ int main(void){
         }
         
         // Verificar si todos los enjambres están listos para la misión
-        if(all_swarms_ready_for_mission() && !ENJ[0].en_mision) {
+        if(!MISSION_STARTED && all_swarms_ready_for_mission() && !ENJ[0].en_mision) {
             // SOLO IMPRIMIR UNA VEZ cuando realmente se inicie la misión
             printf("[SISTEMA] 🎯 ESTADO FINAL DE ENJAMBRES:\n");
             for(int i = 0; i < CFG.num_objetivos; i++) {
